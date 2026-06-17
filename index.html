@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>一维小球碰撞模拟器 - 简洁版</title>
+    <title>一维小球碰撞模拟器 - 修复版</title>
     <style>
         * {
             margin:0;
@@ -214,6 +214,13 @@
             <span class="control-unit">m/s</span>
         </div>
         
+        <!-- 恢复系数 e -->
+        <div class="control-group">
+            <span class="control-label">恢复系数 e:</span>
+            <input type="number" id="restitution" min="0" max="1" step="0.05" value="1" class="control-input">
+            <span class="control-unit">(0-1)</span>
+        </div>
+        
         <button class="btn btn-start" id="startBtn">开始</button>
         <button class="btn btn-reset" id="resetBtn">重置</button>
         <button class="btn btn-auto" id="autoZoomBtn">自动缩放: 开</button>
@@ -234,7 +241,7 @@
     <!-- 画布区域 -->
     <div class="canvas-container" id="canvasContainer">
         <canvas id="canvas"></canvas>
-        <div class="hint">拖动平移 · 滚轮缩放 · 小球上方显示位置(m)</div>
+        <div class="hint">拖动平移 · 滚轮缩放 · 小球上方显示位置(m) · 恢复系数 e 控制弹性</div>
     </div>
     
     <!-- 底部信息 -->
@@ -244,8 +251,9 @@
             <span>动量: <span id="momentum">0</span> kg·m/s</span>
             <span>动能: <span id="energy">0</span> J</span>
             <span>缩放: <span id="zoom">1.0</span>x</span>
+            <span>恢复系数: <span id="restitutionValue">1.0</span></span>
         </div>
-        <div>一维弹性碰撞 · 体积相等 · 物理单位刻度</div>
+        <div>一维弹性碰撞 · 体积相等 · e=1完全弹性，e=0完全非弹性</div>
     </div>
 
     <script>
@@ -408,6 +416,7 @@
         function updateSpeedDisplay() {
             document.getElementById('speed1Display').textContent = ball1.vel.toFixed(1);
             document.getElementById('speed2Display').textContent = ball2.vel.toFixed(1);
+            document.getElementById('restitutionValue').textContent = document.getElementById('restitution').value;
         }
         
         function update() {
@@ -426,28 +435,40 @@
                 collisions++;
                 document.getElementById('collisionCount').textContent = collisions;
                 
-                // 弹性碰撞公式（使用国际单位制）
+                // 获取恢复系数
+                const e = parseFloat(document.getElementById('restitution').value);
+                
+                // 弹性碰撞公式（使用国际单位制，加入恢复系数 e）
                 const v1 = ball1.vel; // m/s
                 const v2 = ball2.vel; // m/s
                 const m1 = ball1.mass; // kg
                 const m2 = ball2.mass; // kg
                 
-                ball1.vel = ((m1-m2)*v1 + 2*m2*v2)/(m1+m2);
-                ball2.vel = ((m2-m1)*v2 + 2*m1*v1)/(m1+m2);
+                // 使用带恢复系数的碰撞公式
+                ball1.vel = ((m1 - e * m2) * v1 + (1 + e) * m2 * v2) / (m1 + m2);
+                ball2.vel = ((m2 - e * m1) * v2 + (1 + e) * m1 * v1) / (m1 + m2);
                 
-                // 防止重叠（使用像素单位）
+                // 防止重叠（修复 e=0 时的位置交换问题）
                 const overlap = minDist - dist;
-                const ratio = m2/(m1+m2);
-                ball1.x -= overlap * ratio * (v1>v2?1:-1);
-                ball2.x += overlap * (1-ratio) * (v1>v2?1:-1);
+                
+                // 根据小球的位置关系调整，而不是根据速度方向
+                if (ball1.x < ball2.x) {
+                    // 红球在左，蓝球在右
+                    ball1.x -= overlap * 0.5;
+                    ball2.x += overlap * 0.5;
+                } else {
+                    // 红球在右，蓝球在左
+                    ball1.x += overlap * 0.5;
+                    ball2.x -= overlap * 0.5;
+                }
             }
             
             // 更新数据（使用国际单位制）
-            const p = ball1.mass*ball1.vel + ball2.mass*ball2.vel; // kg·m/s
-            const e = 0.5*ball1.mass*ball1.vel*ball1.vel + 0.5*ball2.mass*ball2.vel*ball2.vel; // J
+            const p = ball1.mass * ball1.vel + ball2.mass * ball2.vel; // kg·m/s
+            const e_kinetic = 0.5 * ball1.mass * ball1.vel * ball1.vel + 0.5 * ball2.mass * ball2.vel * ball2.vel; // J
             
             document.getElementById('momentum').textContent = p.toFixed(1);
-            document.getElementById('energy').textContent = e.toFixed(1);
+            document.getElementById('energy').textContent = e_kinetic.toFixed(1);
             document.getElementById('zoom').textContent = scale.toFixed(1);
             
             // 更新速度显示栏
@@ -567,7 +588,7 @@
             resize();
             
             // 输入框
-            [mass1, mass2, vel1, vel2].forEach(input => {
+            [mass1, mass2, vel1, vel2, restitution].forEach(input => {
                 input.addEventListener('input', function() {
                     if (!running) {
                         ball1.mass = parseFloat(mass1.value);
