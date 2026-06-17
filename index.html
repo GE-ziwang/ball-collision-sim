@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>一维小球碰撞模拟器 - 修复版</title>
+    <title>一维多球碰撞模拟器 - 点击选取版</title>
     <style>
         * {
             margin:0;
@@ -21,15 +21,16 @@
             overflow: hidden;
         }
         
-        /* 顶部控制栏 - 一行 */
+        /* 顶部控制栏 */
         .control-bar {
             display: flex;
             align-items: center;
             padding: 12px 20px;
             background: #f8f8f8;
             border-bottom: 1px solid #e0e0e0;
-            gap: 20px;
+            gap: 15px;
             flex-wrap: wrap;
+            flex-shrink: 0;
         }
         
         .control-group {
@@ -74,25 +75,50 @@
             background: #e8e8e8;
         }
         
-        .btn-start {
+        .btn-primary {
             background: #e3f2fd;
             border-color: #90caf9;
             color: #1565c0;
         }
         
-        .btn-reset {
-            background: #ffebee;
-            border-color: #ef9a9a;
-            color: #c62828;
-        }
-        
-        .btn-auto {
+        .btn-success {
             background: #e8f5e9;
             border-color: #a5d6a7;
             color: #2e7d32;
         }
         
-        /* 速度显示栏 - 在控制栏下方 */
+        .btn-danger {
+            background: #ffebee;
+            border-color: #ef9a9a;
+            color: #c62828;
+        }
+        
+        .btn-disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* 选中球控制器 */
+        .selected-ball-controls {
+            display: none;
+            align-items: center;
+            gap: 15px;
+            padding-left: 20px;
+            border-left: 1px solid #ddd;
+            margin-left: 10px;
+        }
+        
+        .selected-ball-controls.show {
+            display: flex;
+        }
+        
+        .selected-ball-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        /* 速度显示栏 */
         .speed-bar {
             display: flex;
             justify-content: center;
@@ -100,27 +126,21 @@
             padding: 10px 20px;
             background: #f0f0f0;
             border-bottom: 1px solid #e0e0e0;
-            gap: 40px;
+            gap: 30px;
+            flex-wrap: wrap;
+            flex-shrink: 0;
         }
         
         .speed-item {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
         
         .speed-color {
             width: 12px;
             height: 12px;
             border-radius: 50%;
-        }
-        
-        .speed-red {
-            background: #f44336;
-        }
-        
-        .speed-blue {
-            background: #2196f3;
         }
         
         .speed-text {
@@ -135,6 +155,7 @@
             overflow: hidden;
             cursor: grab;
             background: #fff;
+            min-height: 0; /* 关键：防止被压缩 */
         }
         
         canvas {
@@ -152,21 +173,21 @@
             border-top: 1px solid #e0e0e0;
             font-size: 12px;
             color: #888;
+            flex-shrink: 0;
         }
         
         .info-item {
             display: flex;
             gap: 15px;
+            align-items: center;
         }
         
-        .hint {
-            position: absolute;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 12px;
-            color: #aaa;
-            pointer-events: none;
+        .selected-ball-info {
+            background: #e3f2fd;
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: #1565c0;
+            font-weight: 500;
         }
         
         @media (max-width: 768px) {
@@ -184,112 +205,179 @@
                 gap: 10px;
                 padding: 8px 10px;
             }
+            
+            .selected-ball-controls {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+                padding-left: 0;
+                border-left: none;
+                margin-left: 0;
+                width: 100%;
+            }
         }
     </style>
 </head>
 <body>
-    <!-- 一行控制栏 -->
+    <!-- 控制栏 -->
     <div class="control-bar">
-        <div class="control-group">
-            <span class="control-label">红球质量:</span>
-            <input type="number" id="mass1" min="1" max="100" step="0.5" value="5" class="control-input">
-            <span class="control-unit">kg</span>
-        </div>
-        
-        <div class="control-group">
-            <span class="control-label">蓝球质量:</span>
-            <input type="number" id="mass2" min="1" max="100" step="0.5" value="10" class="control-input">
-            <span class="control-unit">kg</span>
-        </div>
-        
-        <div class="control-group">
-            <span class="control-label">红球速度:</span>
-            <input type="number" id="vel1" min="-50" max="50" step="0.5" value="3" class="control-input">
-            <span class="control-unit">m/s</span>
-        </div>
-        
-        <div class="control-group">
-            <span class="control-label">蓝球速度:</span>
-            <input type="number" id="vel2" min="-50" max="50" step="0.5" value="-2" class="control-input">
-            <span class="control-unit">m/s</span>
-        </div>
-        
-        <!-- 恢复系数 e -->
+        <!-- 核心控制组 -->
         <div class="control-group">
             <span class="control-label">恢复系数 e:</span>
             <input type="number" id="restitution" min="0" max="1" step="0.05" value="1" class="control-input">
             <span class="control-unit">(0-1)</span>
         </div>
         
-        <button class="btn btn-start" id="startBtn">开始</button>
-        <button class="btn btn-reset" id="resetBtn">重置</button>
-        <button class="btn btn-auto" id="autoZoomBtn">自动缩放: 开</button>
+        <!-- 开始/暂停按钮 -->
+        <button class="btn btn-primary" id="toggleBtn">开始</button>
+        
+        <!-- 小球操作按钮 -->
+        <button class="btn btn-success" id="addBallBtn">添加小球</button>
+        <button class="btn" id="clearBallsBtn">清空小球</button>
+        <button class="btn" id="autoZoomBtn">自动缩放: 开</button>
+        
+        <!-- 选中球控制器 -->
+        <div class="selected-ball-controls" id="selectedBallControls">
+            <div class="selected-ball-title">选中小球设置</div>
+            <div class="control-group">
+                <span class="control-label">质量:</span>
+                <input type="number" id="selectedMass" min="0.1" max="100" step="0.1" value="5" class="control-input">
+                <span class="control-unit">kg</span>
+            </div>
+            <div class="control-group">
+                <span class="control-label">速度:</span>
+                <input type="number" id="selectedVel" min="-50" max="50" step="0.1" value="0" class="control-input">
+                <span class="control-unit">m/s</span>
+            </div>
+        </div>
     </div>
     
-    <!-- 速度显示栏 - 在控制栏下方 -->
-    <div class="speed-bar">
-        <div class="speed-item">
-            <div class="speed-color speed-red"></div>
-            <span class="speed-text">红球速度: <span id="speed1Display">3.0</span> m/s</span>
-        </div>
-        <div class="speed-item">
-            <div class="speed-color speed-blue"></div>
-            <span class="speed-text">蓝球速度: <span id="speed2Display">-2.0</span> m/s</span>
-        </div>
+    <!-- 速度显示栏 -->
+    <div class="speed-bar" id="speedBar">
+        <!-- 动态生成小球速度显示 -->
     </div>
     
     <!-- 画布区域 -->
     <div class="canvas-container" id="canvasContainer">
         <canvas id="canvas"></canvas>
-        <div class="hint">拖动平移 · 滚轮缩放 · 小球上方显示位置(m) · 恢复系数 e 控制弹性</div>
     </div>
     
     <!-- 底部信息 -->
     <div class="info-bar">
         <div class="info-item">
-            <span>碰撞: <span id="collisionCount">0</span></span>
-            <span>动量: <span id="momentum">0</span> kg·m/s</span>
-            <span>动能: <span id="energy">0</span> J</span>
+            <span>小球数量: <span id="ballCount">2</span></span>
+            <span>总碰撞: <span id="collisionCount">0</span></span>
+            <span>总动量: <span id="momentum">0</span> kg·m/s</span>
+            <span>总动能: <span id="energy">0</span> J</span>
             <span>缩放: <span id="zoom">1.0</span>x</span>
-            <span>恢复系数: <span id="restitutionValue">1.0</span></span>
         </div>
-        <div>一维弹性碰撞 · 体积相等 · e=1完全弹性，e=0完全非弹性</div>
+        <div class="info-item">
+            <div id="selectedBallInfo" class="selected-ball-info" style="display: none;">
+                选中小球: 动量 0 kg·m/s, 动能 0 J
+            </div>
+        </div>
     </div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const container = document.getElementById('canvasContainer');
+        const selectedBallControls = document.getElementById('selectedBallControls');
+        const selectedBallInfo = document.getElementById('selectedBallInfo');
+        const selectedMassInput = document.getElementById('selectedMass');
+        const selectedVelInput = document.getElementById('selectedVel');
+        const addBallBtn = document.getElementById('addBallBtn');
+        const clearBallsBtn = document.getElementById('clearBallsBtn');
+        const toggleBtn = document.getElementById('toggleBtn');
+        const autoZoomBtn = document.getElementById('autoZoomBtn');
         
         let animId = null;
         let running = false;
         let collisions = 0;
         let autoZoomEnabled = true;
+        let selectedBall = null;
+        let isDraggingBall = false; // 是否正在拖动小球
+        let isDraggingCanvas = false; // 是否正在拖动画布
+        let lastX = 0, lastY = 0;
         
-        // 物理常数：1像素 = 0.1米（建立像素与米的换算关系）
-        const PIXELS_PER_METER = 10; // 10像素 = 1米
+        // 物理常数
+        const PIXELS_PER_METER = 10;
+        const BALL_RADIUS = 30; // 统一小球半径
         
         // 视图
         let offsetX = 0;
         let offsetY = 0;
         let scale = 1;
-        let dragging = false;
-        let lastX = 0, lastY = 0;
         
-        // 小球 - 体积相等，红蓝两色
-        const RADIUS = 30; // 像素
+        // 小球数组
+        let balls = [];
         
-        const ball1 = {
-            x: -200, y: 0, r: RADIUS, 
-            mass: 5, vel: 3, 
-            color: '#f44336'  // 红色
-        };
+        // 预定义颜色
+        const ballColors = [
+            '#f44336', // 红
+            '#2196f3', // 蓝
+            '#4caf50', // 绿
+            '#ff9800', // 橙
+            '#9c27b0', // 紫
+            '#00bcd4', // 青
+            '#ffeb3b', // 黄
+            '#795548'  // 棕
+        ];
         
-        const ball2 = {
-            x: 200, y: 0, r: RADIUS, 
-            mass: 10, vel: -2, 
-            color: '#2196f3'  // 蓝色
-        };
+        // 初始化两个小球
+        function initBalls() {
+            balls = [
+                {
+                    x: -200, y: 0, r: BALL_RADIUS,
+                    mass: 5, vel: 3,
+                    color: ballColors[0],
+                    id: 1
+                },
+                {
+                    x: 200, y: 0, r: BALL_RADIUS,
+                    mass: 10, vel: -2,
+                    color: ballColors[1],
+                    id: 2
+                }
+            ];
+        }
+        
+        // 添加新小球（固定在0位置，速度为0，统一半径）
+        function addBall() {
+            if (balls.length >= 8) {
+                alert('最多只能添加8个小球！');
+                return;
+            }
+            
+            const colorsUsed = balls.map(b => b.color);
+            let availableColor = ballColors.find(c => !colorsUsed.includes(c)) || ballColors[balls.length % ballColors.length];
+            
+            const newBall = {
+                x: 0, // 固定在0位置
+                y: 0,
+                r: BALL_RADIUS, // 使用统一半径
+                mass: 1 + Math.random() * 9, // 随机质量
+                vel: 0, // 速度为0
+                color: availableColor,
+                id: balls.length + 1
+            };
+            
+            balls.push(newBall);
+            updateSpeedDisplay();
+            updateBallCount();
+        }
+        
+        // 清空所有小球
+        function clearBalls() {
+            if (balls.length > 0) {
+                balls = [];
+                collisions = 0;
+                updateSpeedDisplay();
+                updateBallCount();
+                deselectBall();
+                if (!running) draw();
+            }
+        }
         
         function resize() {
             canvas.width = container.clientWidth;
@@ -304,23 +392,21 @@
             ctx.scale(scale, scale);
             ctx.translate(offsetX, offsetY);
             
-            // 绘制x轴（带物理单位）
+            // 绘制x轴
             drawXAxis();
             
-            // 小球
-            drawBall(ball1);
-            drawBall(ball2);
-            
-            // 在小球上方只显示位置
-            drawPositionLabels();
+            // 绘制所有小球
+            balls.forEach(ball => {
+                drawBall(ball);
+                drawPositionLabel(ball);
+            });
             
             ctx.restore();
         }
         
         function drawXAxis() {
-            const axisY = 80; // x轴在画布上的y坐标（相对于中心）
+            const axisY = 80;
             
-            // 绘制x轴线
             ctx.beginPath();
             ctx.moveTo(-10000, axisY);
             ctx.lineTo(10000, axisY);
@@ -328,34 +414,26 @@
             ctx.lineWidth = 1;
             ctx.stroke();
             
-            // 计算刻度间隔（根据缩放级别调整，以米为单位）
-            let meterInterval = 10; // 默认每10米一个刻度
+            // 刻度
+            let meterInterval = 10;
             if (scale < 0.5) meterInterval = 50;
             else if (scale < 1) meterInterval = 20;
             else if (scale > 2) meterInterval = 5;
             else if (scale > 4) meterInterval = 1;
             
-            // 将米转换为像素
             const pixelInterval = meterInterval * PIXELS_PER_METER;
-            
-            // 计算可见区域的起始和结束位置（像素）
             const visibleLeft = (-canvas.width/2/scale - offsetX);
             const visibleRight = (canvas.width/2/scale - offsetX);
-            
-            // 计算第一个刻度位置（像素）
             const firstTick = Math.ceil(visibleLeft / pixelInterval) * pixelInterval;
             
-            // 绘制刻度线和数字
             ctx.font = `${12/scale}px Arial`;
             ctx.fillStyle = '#666';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
             
             for (let x = firstTick; x < visibleRight; x += pixelInterval) {
-                // 跳过0点，因为0点已经在中心
                 if (Math.abs(x) < 0.1) continue;
                 
-                // 绘制刻度线
                 ctx.beginPath();
                 ctx.moveTo(x, axisY - 5);
                 ctx.lineTo(x, axisY + 5);
@@ -363,12 +441,11 @@
                 ctx.lineWidth = 1;
                 ctx.stroke();
                 
-                // 将像素转换为米显示
                 const meterValue = x / PIXELS_PER_METER;
                 ctx.fillText(`${meterValue.toFixed(0)}m`, x, axisY + 8);
             }
             
-            // 绘制原点标记
+            // 原点
             ctx.beginPath();
             ctx.moveTo(0, axisY - 8);
             ctx.lineTo(0, axisY + 8);
@@ -382,143 +459,213 @@
         }
         
         function drawBall(ball) {
-            // 简单圆形
             ctx.beginPath();
             ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
             ctx.fillStyle = ball.color;
             ctx.fill();
             
-            // 添加轻微边框
+            // 边框
             ctx.beginPath();
             ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
-            ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = selectedBall === ball ? '#000' : 'rgba(0,0,0,0.1)';
+            ctx.lineWidth = selectedBall === ball ? 3 : 1;
             ctx.stroke();
+            
+            // 如果是选中的小球，显示ID
+            if (selectedBall === ball) {
+                ctx.font = `${14/scale}px Arial`;
+                ctx.fillStyle = '#000';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(ball.id.toString(), ball.x, ball.y);
+            }
         }
         
-        function drawPositionLabels() {
-            // 在小球上方只显示位置（转换为米）
+        function drawPositionLabel(ball) {
             ctx.font = `${14/scale}px Arial`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'bottom';
             
-            // 红球位置
-            const pos1Meters = ball1.x / PIXELS_PER_METER;
-            ctx.fillStyle = '#f44336';
-            ctx.fillText(`x=${pos1Meters.toFixed(1)}m`, ball1.x, ball1.y - ball1.r - 15);
-            
-            // 蓝球位置
-            const pos2Meters = ball2.x / PIXELS_PER_METER;
-            ctx.fillStyle = '#2196f3';
-            ctx.fillText(`x=${pos2Meters.toFixed(1)}m`, ball2.x, ball2.y - ball2.r - 15);
+            const posMeters = ball.x / PIXELS_PER_METER;
+            ctx.fillStyle = ball.color;
+            ctx.fillText(`x=${posMeters.toFixed(1)}m`, ball.x, ball.y - ball.r - 15);
         }
         
         function updateSpeedDisplay() {
-            document.getElementById('speed1Display').textContent = ball1.vel.toFixed(1);
-            document.getElementById('speed2Display').textContent = ball2.vel.toFixed(1);
-            document.getElementById('restitutionValue').textContent = document.getElementById('restitution').value;
+            const speedBar = document.getElementById('speedBar');
+            speedBar.innerHTML = '';
+            
+            balls.forEach(ball => {
+                const speedItem = document.createElement('div');
+                speedItem.className = 'speed-item';
+                speedItem.innerHTML = `
+                    <div class="speed-color" style="background: ${ball.color};"></div>
+                    <span class="speed-text">球${ball.id}: ${ball.vel.toFixed(1)} m/s (${ball.mass.toFixed(1)}kg)</span>
+                `;
+                speedBar.appendChild(speedItem);
+            });
+        }
+        
+        function updateBallCount() {
+            document.getElementById('ballCount').textContent = balls.length;
+        }
+        
+        function selectBall(ball) {
+            selectedBall = ball;
+            selectedBallControls.classList.add('show');
+            selectedMassInput.value = ball.mass.toFixed(1);
+            selectedVelInput.value = ball.vel.toFixed(1);
+            updateSelectedBallInfo();
+        }
+        
+        function deselectBall() {
+            selectedBall = null;
+            selectedBallControls.classList.remove('show');
+            selectedBallInfo.style.display = 'none';
+        }
+        
+        function updateSelectedBallInfo() {
+            if (selectedBall) {
+                const momentum = selectedBall.mass * selectedBall.vel;
+                const energy = 0.5 * selectedBall.mass * selectedBall.vel * selectedBall.vel;
+                selectedBallInfo.innerHTML = `选中小球${selectedBall.id}: 动量 ${momentum.toFixed(2)} kg·m/s, 动能 ${energy.toFixed(2)} J`;
+                selectedBallInfo.style.display = 'block';
+            }
+        }
+        
+        // 检查点是否在小球内
+        function isPointInBall(x, y, ball) {
+            const dx = ball.x - x;
+            const dy = ball.y - y;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+            return distance <= ball.r;
+        }
+        
+        // 调整小球位置，避免与其他小球重叠
+        function adjustBallPosition(ball) {
+            // 检查与所有其他小球的重叠
+            for (let i = 0; i < balls.length; i++) {
+                const otherBall = balls[i];
+                if (otherBall === ball) continue;
+                
+                const dx = ball.x - otherBall.x;
+                const dy = ball.y - otherBall.y;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+                const minDistance = ball.r + otherBall.r;
+                
+                if (distance < minDistance) {
+                    // 重叠了，需要调整位置
+                    // 计算从otherBall指向ball的方向
+                    const angle = Math.atan2(dy, dx);
+                    
+                    // 将ball移动到刚好不重叠的位置
+                    ball.x = otherBall.x + Math.cos(angle) * minDistance;
+                    ball.y = otherBall.y + Math.sin(angle) * minDistance;
+                }
+            }
         }
         
         function update() {
-            // 移动（速度单位是m/s，但我们需要转换为像素/帧）
-            // 假设60fps，所以每帧移动 vel * (1/60) 米
-            // 转换为像素：vel * (1/60) * PIXELS_PER_METER
-            const timeStep = 1/60; // 假设60fps
-            ball1.x += ball1.vel * timeStep * PIXELS_PER_METER;
-            ball2.x += ball2.vel * timeStep * PIXELS_PER_METER;
+            const timeStep = 1/60;
+            const e = parseFloat(document.getElementById('restitution').value);
+            
+            // 更新位置
+            balls.forEach(ball => {
+                ball.x += ball.vel * timeStep * PIXELS_PER_METER;
+            });
             
             // 碰撞检测
-            const dist = Math.abs(ball1.x - ball2.x);
-            const minDist = ball1.r + ball2.r;
-            
-            if (dist < minDist) {
-                collisions++;
-                document.getElementById('collisionCount').textContent = collisions;
-                
-                // 获取恢复系数
-                const e = parseFloat(document.getElementById('restitution').value);
-                
-                // 弹性碰撞公式（使用国际单位制，加入恢复系数 e）
-                const v1 = ball1.vel; // m/s
-                const v2 = ball2.vel; // m/s
-                const m1 = ball1.mass; // kg
-                const m2 = ball2.mass; // kg
-                
-                // 使用带恢复系数的碰撞公式
-                ball1.vel = ((m1 - e * m2) * v1 + (1 + e) * m2 * v2) / (m1 + m2);
-                ball2.vel = ((m2 - e * m1) * v2 + (1 + e) * m1 * v1) / (m1 + m2);
-                
-                // 防止重叠（修复 e=0 时的位置交换问题）
-                const overlap = minDist - dist;
-                
-                // 根据小球的位置关系调整，而不是根据速度方向
-                if (ball1.x < ball2.x) {
-                    // 红球在左，蓝球在右
-                    ball1.x -= overlap * 0.5;
-                    ball2.x += overlap * 0.5;
-                } else {
-                    // 红球在右，蓝球在左
-                    ball1.x += overlap * 0.5;
-                    ball2.x -= overlap * 0.5;
+            for (let i = 0; i < balls.length; i++) {
+                for (let j = i + 1; j < balls.length; j++) {
+                    const ball1 = balls[i];
+                    const ball2 = balls[j];
+                    
+                    const dist = Math.abs(ball1.x - ball2.x);
+                    const minDist = ball1.r + ball2.r;
+                    
+                    if (dist < minDist) {
+                        collisions++;
+                        document.getElementById('collisionCount').textContent = collisions;
+                        
+                        // 碰撞响应（带恢复系数）
+                        const v1 = ball1.vel;
+                        const v2 = ball2.vel;
+                        const m1 = ball1.mass;
+                        const m2 = ball2.mass;
+                        
+                        ball1.vel = ((m1 - e * m2) * v1 + (1 + e) * m2 * v2) / (m1 + m2);
+                        ball2.vel = ((m2 - e * m1) * v2 + (1 + e) * m1 * v1) / (m1 + m2);
+                        
+                        // 防止重叠 - 根据小球的位置关系调整
+                        const overlap = minDist - dist;
+                        
+                        if (ball1.x < ball2.x) {
+                            // ball1在左，ball2在右
+                            const ratio = m2 / (m1 + m2);
+                            ball1.x -= overlap * ratio;
+                            ball2.x += overlap * (1 - ratio);
+                        } else {
+                            // ball1在右，ball2在左
+                            const ratio = m1 / (m1 + m2);
+                            ball1.x += overlap * ratio;
+                            ball2.x -= overlap * (1 - ratio);
+                        }
+                    }
                 }
             }
             
-            // 更新数据（使用国际单位制）
-            const p = ball1.mass * ball1.vel + ball2.mass * ball2.vel; // kg·m/s
-            const e_kinetic = 0.5 * ball1.mass * ball1.vel * ball1.vel + 0.5 * ball2.mass * ball2.vel * ball2.vel; // J
+            // 更新物理数据
+            let totalMomentum = 0;
+            let totalEnergy = 0;
             
-            document.getElementById('momentum').textContent = p.toFixed(1);
-            document.getElementById('energy').textContent = e_kinetic.toFixed(1);
+            balls.forEach(ball => {
+                totalMomentum += ball.mass * ball.vel;
+                totalEnergy += 0.5 * ball.mass * ball.vel * ball.vel;
+            });
+            
+            document.getElementById('momentum').textContent = totalMomentum.toFixed(1);
+            document.getElementById('energy').textContent = totalEnergy.toFixed(1);
             document.getElementById('zoom').textContent = scale.toFixed(1);
             
-            // 更新速度显示栏
+            // 更新速度显示
             updateSpeedDisplay();
             
+            // 更新选中小球信息
+            updateSelectedBallInfo();
+            
             // 自动缩放
-            if (autoZoomEnabled) {
+            if (autoZoomEnabled && balls.length > 0) {
                 smartAutoZoom();
             }
         }
         
         function smartAutoZoom() {
-            // 计算两个小球在x轴上的最小和最大位置（包括半径，像素单位）
-            const minX = Math.min(ball1.x - ball1.r, ball2.x - ball2.r);
-            const maxX = Math.max(ball1.x + ball1.r, ball2.x + ball2.r);
+            let minX = Infinity, maxX = -Infinity;
             
-            // 计算小球的总宽度（像素）
+            balls.forEach(ball => {
+                minX = Math.min(minX, ball.x - ball.r);
+                maxX = Math.max(maxX, ball.x + ball.r);
+            });
+            
             const ballsWidth = maxX - minX;
-            
-            // 如果小球宽度为0（重合），使用默认缩放
             if (ballsWidth < 1) {
                 scale = 1;
                 offsetX = 0;
                 return;
             }
             
-            // 计算需要的缩放比例，确保小球完全在画布内，并留出边距
-            // 边距为画布宽度的15%，确保小球不会太靠近边缘
             const marginPercent = 0.15;
             const availableWidth = canvas.width * (1 - 2 * marginPercent);
-            
-            // 计算需要的缩放比例
             let newScale = availableWidth / ballsWidth;
-            
-            // 限制缩放范围
             newScale = Math.max(0.2, Math.min(5, newScale));
             
-            // 使用平滑过渡，避免突然跳变
             const smoothingFactor = 0.1;
             scale += (newScale - scale) * smoothingFactor;
             
-            // 计算中心点（像素）
             const centerX = (minX + maxX) / 2;
-            
-            // 计算需要的偏移量，使小球居中
             const targetOffsetX = -centerX;
-            
-            // 平滑过渡偏移量
             offsetX += (targetOffsetX - offsetX) * smoothingFactor;
-            offsetY = 0; // 一维运动，y轴不变
+            offsetY = 0;
         }
         
         function animate() {
@@ -527,158 +674,195 @@
             animId = requestAnimationFrame(animate);
         }
         
-        function toggle() {
-            const btn = document.getElementById('startBtn');
+        function toggleSimulation() {
             if (running) {
                 cancelAnimationFrame(animId);
-                btn.textContent = '开始';
+                toggleBtn.textContent = '开始';
+                // 暂停时允许操作
+                enableBallOperations();
+                container.style.cursor = 'grab';
             } else {
                 animate();
-                btn.textContent = '暂停';
+                toggleBtn.textContent = '暂停';
+                // 运行时禁止操作小球，但允许移动画布
+                disableBallEditing();
+                container.style.cursor = 'grab';
+                deselectBall();
             }
             running = !running;
         }
         
-        function reset() {
-            ball1.mass = parseFloat(mass1.value);
-            ball2.mass = parseFloat(mass2.value);
-            ball1.vel = parseFloat(vel1.value);
-            ball2.vel = parseFloat(vel2.value);
+        function toggleAutoZoom() {
+            autoZoomEnabled = !autoZoomEnabled;
+            autoZoomBtn.textContent = `自动缩放: ${autoZoomEnabled ? '开' : '关'}`;
             
-            ball1.x = -200;
-            ball2.x = 200;
-            collisions = 0;
-            
-            offsetX = 0;
-            offsetY = 0;
-            scale = 1;
-            
-            document.getElementById('collisionCount').textContent = '0';
-            document.getElementById('momentum').textContent = '0';
-            document.getElementById('energy').textContent = '0';
-            document.getElementById('zoom').textContent = '1.0';
-            
-            // 更新速度显示栏
-            updateSpeedDisplay();
-            
-            if (running) {
-                cancelAnimationFrame(animId);
-                animate();
+            if (autoZoomEnabled) {
+                autoZoomBtn.classList.add('btn-success');
+                autoZoomBtn.classList.remove('btn-danger');
             } else {
-                draw();
+                autoZoomBtn.classList.remove('btn-success');
+                autoZoomBtn.classList.add('btn-danger');
             }
         }
         
-        function toggleAutoZoom() {
-            autoZoomEnabled = !autoZoomEnabled;
-            const btn = document.getElementById('autoZoomBtn');
-            btn.textContent = `自动缩放: ${autoZoomEnabled ? '开' : '关'}`;
-            
-            if (autoZoomEnabled) {
-                btn.classList.add('btn-auto');
-                btn.classList.remove('btn-reset');
-            } else {
-                btn.classList.remove('btn-auto');
-                btn.classList.add('btn-reset');
-            }
+        function enableBallOperations() {
+            addBallBtn.disabled = false;
+            clearBallsBtn.disabled = false;
+            addBallBtn.classList.remove('btn-disabled');
+            clearBallsBtn.classList.remove('btn-disabled');
+        }
+        
+        function disableBallOperations() {
+            addBallBtn.disabled = true;
+            clearBallsBtn.disabled = true;
+            addBallBtn.classList.add('btn-disabled');
+            clearBallsBtn.classList.add('btn-disabled');
+        }
+        
+        function disableBallEditing() {
+            // 只禁用小球参数编辑，不禁用画布操作
+            selectedMassInput.disabled = true;
+            selectedVelInput.disabled = true;
+            selectedMassInput.classList.add('btn-disabled');
+            selectedVelInput.classList.add('btn-disabled');
         }
         
         // 事件绑定
         function setup() {
             resize();
+            initBalls();
+            updateSpeedDisplay();
+            updateBallCount();
             
-            // 输入框
-            [mass1, mass2, vel1, vel2, restitution].forEach(input => {
-                input.addEventListener('input', function() {
-                    if (!running) {
-                        ball1.mass = parseFloat(mass1.value);
-                        ball2.mass = parseFloat(mass2.value);
-                        ball1.vel = parseFloat(vel1.value);
-                        ball2.vel = parseFloat(vel2.value);
-                        draw();
-                        
-                        // 更新速度显示栏
-                        updateSpeedDisplay();
-                    }
-                });
-                
-                // 限制输入范围
-                input.addEventListener('change', function() {
-                    let value = parseFloat(this.value);
-                    const min = parseFloat(this.min);
-                    const max = parseFloat(this.max);
-                    
-                    if (value < min) value = min;
-                    if (value > max) value = max;
-                    
-                    this.value = value;
-                    
-                    if (!running) {
-                        ball1.mass = parseFloat(mass1.value);
-                        ball2.mass = parseFloat(mass2.value);
-                        ball1.vel = parseFloat(vel1.value);
-                        ball2.vel = parseFloat(vel2.value);
-                        draw();
-                        
-                        // 更新速度显示栏
-                        updateSpeedDisplay();
-                    }
-                });
-            });
-            
-            // 按钮
-            startBtn.addEventListener('click', toggle);
-            resetBtn.addEventListener('click', reset);
+            // 控制按钮
+            toggleBtn.addEventListener('click', toggleSimulation);
+            addBallBtn.addEventListener('click', addBall);
+            clearBallsBtn.addEventListener('click', clearBalls);
             autoZoomBtn.addEventListener('click', toggleAutoZoom);
             
-            // 鼠标拖动
+            // 选中球的质量速度控制器
+            selectedMassInput.addEventListener('input', function() {
+                if (selectedBall && !running) {
+                    selectedBall.mass = parseFloat(this.value);
+                    if (isNaN(selectedBall.mass) || selectedBall.mass <= 0) {
+                        selectedBall.mass = 1;
+                    }
+                    updateSpeedDisplay();
+                    updateSelectedBallInfo();
+                }
+            });
+            
+            selectedVelInput.addEventListener('input', function() {
+                if (selectedBall && !running) {
+                    selectedBall.vel = parseFloat(this.value);
+                    if (isNaN(selectedBall.vel)) {
+                        selectedBall.vel = 0;
+                    }
+                    updateSpeedDisplay();
+                    updateSelectedBallInfo();
+                }
+            });
+            
+            // 鼠标事件 - 拖动画布或小球
             container.addEventListener('mousedown', e => {
-                dragging = true;
+                const rect = container.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                // 转换为世界坐标
+                const worldX = (mouseX - canvas.width/2 - offsetX) / scale;
+                const worldY = (mouseY - canvas.height/2 - offsetY) / scale;
+                
+                // 检查是否点击了小球（仅在暂停时）
+                if (!running) {
+                    const clickedBall = balls.find(ball => isPointInBall(worldX, worldY, ball));
+                    
+                    if (clickedBall && e.button === 0) {
+                        // 左键点击小球，选中并准备拖动
+                        selectBall(clickedBall);
+                        isDraggingBall = true;
+                        container.style.cursor = 'grabbing';
+                        e.preventDefault(); // 防止默认行为
+                        return;
+                    }
+                }
+                
+                // 没有点击小球，开始拖动视图
+                isDraggingCanvas = true;
                 lastX = e.clientX;
                 lastY = e.clientY;
                 container.style.cursor = 'grabbing';
-                
-                // 用户手动操作时暂时禁用自动缩放
-                autoZoomEnabled = false;
-                document.getElementById('autoZoomBtn').textContent = '自动缩放: 关';
-                document.getElementById('autoZoomBtn').classList.remove('btn-auto');
-                document.getElementById('autoZoomBtn').classList.add('btn-reset');
             });
             
             container.addEventListener('mousemove', e => {
-                if (!dragging) return;
-                offsetX += (e.clientX - lastX)/scale;
-                offsetY += (e.clientY - lastY)/scale;
-                lastX = e.clientX;
-                lastY = e.clientY;
+                const rect = container.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                if (isDraggingBall && selectedBall && !running) {
+                    // 拖动选中的小球
+                    const worldX = (mouseX - canvas.width/2 - offsetX) / scale;
+                    selectedBall.x = worldX;
+                    
+                    // 调整位置，避免与其他小球重叠
+                    adjustBallPosition(selectedBall);
+                    
+                    updateSelectedBallInfo();
+                } else if (isDraggingCanvas) {
+                    // 拖动视图
+                    offsetX += (e.clientX - lastX)/scale;
+                    offsetY += (e.clientY - lastY)/scale;
+                    lastX = e.clientX;
+                    lastY = e.clientY;
+                }
+                
                 draw();
             });
             
             container.addEventListener('mouseup', () => {
-                dragging = false;
-                container.style.cursor = 'grab';
+                isDraggingBall = false;
+                isDraggingCanvas = false;
+                container.style.cursor = running ? 'grab' : (selectedBall ? 'pointer' : 'grab');
             });
             
             container.addEventListener('mouseleave', () => {
-                dragging = false;
-                container.style.cursor = 'grab';
+                isDraggingBall = false;
+                isDraggingCanvas = false;
+                container.style.cursor = running ? 'grab' : (selectedBall ? 'pointer' : 'grab');
+            });
+            
+            // 阻止右键菜单
+            container.addEventListener('contextmenu', e => {
+                e.preventDefault();
             });
             
             // 滚轮缩放
             container.addEventListener('wheel', e => {
                 e.preventDefault();
                 const factor = e.deltaY < 0 ? 1.1 : 0.9;
+                const oldScale = scale;
                 scale *= factor;
                 scale = Math.max(0.2, Math.min(5, scale));
                 
-                // 用户手动缩放时暂时禁用自动缩放
+                // 以鼠标为中心缩放
+                const rect = container.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                const worldX = (mouseX - canvas.width/2 - offsetX) / oldScale;
+                const worldY = (mouseY - canvas.height/2 - offsetY) / oldScale;
+                
+                offsetX = mouseX - canvas.width/2 - worldX * scale;
+                offsetY = mouseY - canvas.height/2 - worldY * scale;
+                
+                // 手动缩放时暂时禁用自动缩放
                 autoZoomEnabled = false;
-                document.getElementById('autoZoomBtn').textContent = '自动缩放: 关';
-                document.getElementById('autoZoomBtn').classList.remove('btn-auto');
-                document.getElementById('autoZoomBtn').classList.add('btn-reset');
+                autoZoomBtn.textContent = '自动缩放: 关';
+                autoZoomBtn.classList.remove('btn-success');
+                autoZoomBtn.classList.add('btn-danger');
                 
                 draw();
-            });
+            }, { passive: false });
             
             window.addEventListener('resize', resize);
             draw();
